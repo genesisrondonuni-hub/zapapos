@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZapaPOS</title>
+<style>
+:root{--tinta:#14213d;--papel:#eef1f4;--hoja:#fff;--linea:#d3d9e0;--texto:#1b2433;--suave:#5b6675;--caja:#f2b705;--ok:#1b7f4c;--mal:#b42318;--aviso:#8a5a00}
+*{box-sizing:border-box}
+body{margin:0;background:var(--papel);color:var(--texto);font:16px/1.4 "Segoe UI",system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit}
+button{min-height:48px;padding:0 18px;border-radius:10px;border:1px solid var(--linea);background:var(--hoja);cursor:pointer;font-weight:600}
+button:hover{border-color:var(--tinta)}
+button.p{background:var(--caja);border-color:var(--caja);color:var(--tinta)}
+button.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+button.m{color:var(--mal)}
+button:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--tinta);outline-offset:2px}
+input,select{min-height:48px;width:100%;padding:0 12px;border:1px solid var(--linea);border-radius:10px;background:var(--hoja)}
+label{display:block;font-size:14px;color:var(--suave);margin:10px 0 4px}
+.n{font-variant-numeric:tabular-nums}
+header{background:var(--tinta);color:#fff;display:flex;gap:12px;align-items:center;padding:8px 16px;flex-wrap:wrap}
+header b{font-size:20px;letter-spacing:.3px}
+header .sp{flex:1}
+.chip{background:#ffffff1f;border-radius:8px;padding:6px 12px}
+.chip.w{background:var(--caja);color:var(--tinta);font-weight:700}
+header button{background:#ffffff1f;border-color:transparent;color:#fff}
+main{display:grid;grid-template-columns:minmax(0,3fr) minmax(300px,2fr);gap:16px;padding:16px;max-width:1280px;margin:auto}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.hoja{background:var(--hoja);border:1px solid var(--linea);border-radius:14px;padding:16px}
+#scan{font-size:24px;min-height:64px;border:3px solid var(--tinta);border-radius:14px}
+.ayuda{color:var(--suave);font-size:14px;margin:6px 2px 12px}
+.linea{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--linea)}
+.linea small{color:var(--suave)}
+.qty{display:flex;align-items:center;gap:6px}.qty button{min-height:44px;width:44px;padding:0}.qty b{min-width:28px;text-align:center}
+.vacio{padding:40px 8px;text-align:center;color:var(--suave)}
+.tot{display:flex;justify-content:space-between;padding:4px 0}
+.gran{font-size:44px;font-weight:700;line-height:1.1;color:var(--tinta)}
+.bs{font-size:22px;color:var(--suave)}
+.acc{display:grid;gap:10px;margin-top:14px}
+#modal{position:fixed;inset:0;background:#14213dcc;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px}
+#modal.on{display:flex}
+.caja{background:var(--hoja);border-radius:16px;padding:20px;width:100%;max-width:560px}
+.caja h2{margin:0 0 8px;font-size:22px}
+.mets{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.mets button.sel{background:var(--tinta);color:#fff;border-color:var(--tinta)}
+.pago{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--linea)}
+.pago button{min-height:40px}
+.pin{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.pin button{min-height:64px;font-size:26px}
+#pinv{font-size:34px;text-align:center;letter-spacing:12px;min-height:60px}
+.aviso{background:#fff4d6;border:1px solid #e6c15a;color:var(--aviso);border-radius:10px;padding:8px 12px;margin:8px 0}
+.err{background:#fde7e4;border:1px solid #f1a9a1;color:var(--mal);border-radius:10px;padding:8px 12px;margin:8px 0;font-weight:600}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:9}
+.fila{display:flex;gap:8px}.fila>*{flex:1}
+.ctr{text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal" role="dialog" aria-modal="true"></div>
+<div id="toast" role="alert"></div>
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const usd=c=>"$"+m(c), bs=c=>"Bs "+m(c);
+const m=c=>(c<0?"-":"")+String(Math.floor(Math.abs(c)/100)).replace(/\B(?=(\d{3})+(?!\d))/g,".")+","+String(Math.abs(c)%100).padStart(2,"0");
+const ET={pago_movil:"Pago Móvil",zelle:"Zelle",usdt:"USDT",binance_pay:"Binance Pay",efectivo_bs:"Efectivo Bs",efectivo_usd:"Efectivo USD",punto_debito:"Punto débito",punto_credito:"Punto crédito"};
+let S={user:null,tasa:null,metodos:{},venta:null,abiertas:[]},TOK=sessionStorage.getItem("tok"),M=null,pinTxt="";
+
+async function api(met,url,body){
+  const r=await fetch(url,{method:met,headers:{"Content-Type":"application/json","X-Token":TOK||""},body:body?JSON.stringify(body):undefined});
+  let j={};try{j=await r.json()}catch(e){}
+  if(r.status===401&&TOK){TOK=null;sessionStorage.removeItem("tok");S.user=null;render()}
+  if(!r.ok){const e=new Error(j.error||"Error de conexión con la caja");e.status=r.status;throw e}
+  return j;
+}
+function aviso(t,mal){const e=$("#toast");e.innerHTML=`<div class="${mal?"err":"aviso"}">${esc(t)}</div>`;clearTimeout(aviso.t);aviso.t=setTimeout(()=>e.innerHTML="",5000)}
+async function ok(f){try{return await f()}catch(e){aviso(e.message,true);return null}}
+function modal(h){const e=$("#modal");e.innerHTML=`<div class="caja">${h}</div>`;e.classList.add("on");const i=e.querySelector("input,select");if(i)i.focus()}
+function cerrar(){$("#modal").classList.remove("on");$("#modal").innerHTML="";foco()}
+function foco(){const s=$("#scan");if(s&&!$("#modal.on"))s.focus()}
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&$("#modal.on"))cerrar();
+  if(e.key==="F2"&&S.user&&S.venta){e.preventDefault();cobrar()}
+});
+
+/* ---------- entrada ---------- */
+function login(){
+  const n=localStorage.getItem("nombre")||"";
+  $("#app").innerHTML=`<div class="caja" style="margin:40px auto"><h2 class="ctr">ZapaPOS</h2>
+  <label for="nom">Usuario</label><input id="nom" value="${esc(n)}" autocomplete="off">
+  <label>PIN</label><input id="pinv" readonly aria-label="PIN" value="">
+  <div class="pin">${[1,2,3,4,5,6,7,8,9].map(d=>`<button data-d="${d}">${d}</button>`).join("")}<button data-d="b">⌫</button><button data-d="0">0</button><button class="p" data-d="ok">Entrar</button></div>
+  <div id="le"></div></div>`;
+  pinTxt="";
+  $("#app").onclick=async ev=>{
+    const d=ev.target.dataset&&ev.target.dataset.d;if(!d)return;
+    if(d==="b")pinTxt=pinTxt.slice(0,-1);else if(d!=="ok"&&pinTxt.length<6)pinTxt+=d;
+    $("#pinv").value="•".repeat(pinTxt.length);
+    if(d==="ok"){
+      try{const r=await api("POST","/api/login",{nombre:$("#nom").value.trim(),pin:pinTxt});
+        TOK=r.token;sessionStorage.setItem("tok",TOK);localStorage.setItem("nombre",r.usuario.nombre);S.user=r.usuario;await iniciar()}
+      catch(e){pinTxt="";$("#pinv").value="";$("#le").innerHTML=`<div class="err">${esc(e.message)}</div>`}
+    }
+  };
+}
+async function iniciar(){
+  const e=await ok(()=>api("GET","/api/estado"));if(!e){return login()}
+  S.user=e.usuario;S.tasa=e.tasa;S.metodos=e.metodos;S.abiertas=e.ventas_abiertas;S.venta=null;$("#app").onclick=null;render();
+  if(e.respaldo&&e.respaldo.alerta)aviso(e.respaldo.mensaje);
+  else if(e.licencia&&e.licencia.alerta)aviso(e.licencia.mensaje);
+  else if(!e.impresora)aviso("No hay impresora de tickets configurada: las ventas se guardan pero no se imprimen");
+}
+async function refrescarTasa(){const e=await api("GET","/api/estado");S.tasa=e.tasa;S.abiertas=e.ventas_abiertas}
+
+/* ---------- caja ---------- */
+function render(){
+  if(!S.user)return login();
+  const t=S.tasa||{},v=S.venta&&S.venta.venta,L=S.venta?S.venta.lineas:[];
+  const tasaChip=t.error?`<span class="chip w">Falta la tasa del día</span>`:`<span class="chip n ${t.edad_horas>24?"w":""}">${esc(t.tipo.toUpperCase())} ${(t.tasa_micro/1e6).toFixed(2).replace(".",",")}${t.edad_horas>24?` · hace ${Math.round(t.edad_horas)} h`:""}</span>`;
+  $("#app").innerHTML=`<header><b>ZapaPOS</b>${tasaChip}<span class="sp"></span><span class="chip">${esc(S.user.nombre)}</span><button id="mas">Más opciones</button></header>
+  <main><section><div class="hoja"><input id="scan" aria-label="Código de barras" placeholder="Escanee el código de barras" autocomplete="off">
+  <div class="ayuda">Escanee con el lector o escriba el código y pulse Enter. La venta se abre sola.</div>
+  <div id="cart">${L.length?L.map(l=>`<div class="linea"><div class="qty"><button data-i="${l.item_id}" data-q="${l.cantidad-1}" aria-label="Quitar uno">−</button><b class="n">${l.cantidad}</b><button data-i="${l.item_id}" data-q="${l.cantidad+1}" aria-label="Agregar uno">+</button></div>
+  <div><b>${esc(l.marca)} ${esc(l.modelo)}</b><br><small>Talla ${esc(l.talla)} · ${esc(l.color)} · ${usd(l.precio_unit_usd_cents)} c/u</small></div>
+  <div class="n"><b>${usd(l.importe_usd_cents)}</b> <button class="m" data-i="${l.item_id}" data-q="0" aria-label="Eliminar línea">✕</button></div></div>`).join(""):`<div class="vacio">Sin productos todavía</div>`}</div></div></section>
+  <aside><div class="hoja"><div class="tot"><span>Subtotal</span><span class="n">${usd(v?v.subtotal_usd_cents:0)}</span></div>
+  <div class="tot"><span>IVA ${v?v.iva_bp/100:16}%</span><span class="n">${usd(v?v.iva_usd_cents:0)}</span></div>
+  <div class="gran n">${usd(v?v.total_usd_cents:0)}</div><div class="bs n">${bs(v?v.total_bs_centimos:0)}</div>
+  <div class="acc"><button class="p" id="cobrar" ${L.length?"":"disabled"}>Cobrar (F2)</button><button id="nueva" ${S.venta?"":"disabled"} class="m">Cancelar venta</button></div></div></aside></main>`;
+  const sc=$("#scan");sc.onkeydown=async e=>{if(e.key==="Enter"&&sc.value.trim()){const c=sc.value;sc.value="";await escanear(c)}};
+  $("#cart").onclick=async e=>{const b=e.target.closest("button[data-i]");if(b)await ok(async()=>{S.venta=await api("POST",`/api/venta/${S.venta.venta.id}/item/${b.dataset.i}`,{cantidad:+b.dataset.q});render()})};
+  $("#cobrar").onclick=cobrar;$("#nueva").onclick=cancelar;$("#mas").onclick=mas;foco();
+}
+async function escanear(codigo){
+  await ok(async()=>{
+    if(!S.venta){const r=await api("POST","/api/venta");S.venta=r.venta;if(r.advertencias&&r.advertencias.length)aviso(r.advertencias[0])}
+    const r=await api("POST",`/api/venta/${S.venta.venta.id}/escanear`,{codigo});S.venta=r.venta;
+    if(r.advertencias.length)aviso(r.advertencias[0]);render();
+  });
+  foco();
+}
+async function cancelar(){
+  if(!S.venta||!confirm("¿Cancelar esta venta?"))return;
+  await ok(async()=>{await api("POST",`/api/venta/${S.venta.venta.id}/anular`,{motivo:"Cancelada por el cajero"});S.venta=null;await refrescarTasa();render()});
+}
+
+/* ---------- cobro ---------- */
+function cobrar(){M=M||null;pagoVista()}
+function pagoVista(msg){
+  const r=S.venta.resumen_pagos,v=S.venta.venta,mt=S.metodos,vivos=S.venta.pagos.filter(p=>!p.anulado);
+  const exc=r.exceso_usd_cents>0,listo=r.pendiente_usd_cents===0&&r.exceso_usd_cents<=1&&!r.sin_verificar.length;
+  const f=M?mt[M]:null,pre=f?(f.moneda==="BS"?m(r.pendiente_bs_centimos):m(r.pendiente_usd_cents)):"";
+  modal(`<h2>Cobrar ${usd(v.total_usd_cents)} <span class="bs n">· ${bs(v.total_bs_centimos)}</span></h2>
+  ${msg?`<div class="err">${esc(msg)}</div>`:""}
+  <div class="tot"><b>Falta por cobrar</b><b class="n">${usd(r.pendiente_usd_cents)} · ${bs(r.pendiente_bs_centimos)}</b></div>
+  ${exc?`<div class="aviso"><b>Entregue vuelto: ${usd(r.exceso_usd_cents)} · ${bs(r.exceso_bs_centimos)}</b></div>`:""}
+  <label>Forma de pago</label><div class="mets">${Object.keys(mt).map(k=>`<button data-m="${k}" class="${M===k?"sel":""}">${ET[k]}</button>`).join("")}</div>
+  ${f&&r.pendiente_usd_cents>0?`<label>Monto en ${f.moneda==="BS"?"bolívares (Bs)":f.moneda==="USDT"?"USDT":"dólares ($)"}</label><input id="mon" inputmode="decimal" value="${pre}">
+  ${f.referencia?`<label>Referencia ${M==="pago_movil"||f.digital?"del pago":"del voucher"}</label><input id="ref" autocomplete="off">`:""}
+  ${M==="pago_movil"?`<label>Banco (código o nombre)</label><input id="ban" autocomplete="off">`:""}
+  <div class="acc"><button class="p" id="reg">Registrar pago</button></div>`:""}
+  <div style="margin-top:12px">${vivos.map(p=>`<div class="pago"><span>${ET[p.metodo]}${p.referencia?` · ${esc(p.referencia)}`:""}${p.banco?` (${esc(p.banco)})`:""}<br><small class="n">${p.moneda==="BS"?bs(p.monto_cents):usd(p.monto_cents)}</small></span>
+  <span>${p.verificado?"":`<button class="ok" data-c="${p.id}">Ya llegó</button> `}<button class="m" data-a="${p.id}">Anular</button></span></div>`).join("")}</div>
+  ${exc?`<label>Registrar vuelto entregado</label><div class="fila"><select id="vm"><option value="efectivo_usd">Efectivo USD</option><option value="efectivo_bs">Efectivo Bs</option><option value="pago_movil">Pago Móvil</option></select><input id="vv" inputmode="decimal" value="${m(r.exceso_usd_cents)}"></div><div class="acc"><button id="vr">Registrar vuelto</button></div>`:""}
+  <div class="acc"><button class="ok" id="fin" ${listo?"":"disabled"}>Finalizar venta</button><button id="vol">Volver</button></div>`);
+  const mo=$("#modal");
+  mo.onclick=async e=>{
+    const b=e.target.closest("button");if(!b)return;const id=S.venta.venta.id;
+    if(b.dataset.m){M=b.dataset.m;return pagoVista()}
+    if(b.id==="vol")return cerrar(),render();
+    const run=async f=>{try{S.venta=await f();pagoVista()}catch(x){pagoVista(x.message)}};
+    if(b.id==="reg")return run(async()=>{const r=await api("POST",`/api/venta/${id}/pago`,{metodo:M,monto:$("#mon").value,referencia:$("#ref")&&$("#ref").value,banco:$("#ban")&&$("#ban").value});M=null;if(r.duplicado)aviso("Ese pago ya estaba registrado");return r.venta});
+    if(b.dataset.c)return run(async()=>{await api("POST",`/api/pago/${b.dataset.c}/confirmar`);return api("GET",`/api/venta/${id}`)});
+    if(b.dataset.a)return run(async()=>{const mot="Corrección del cajero";try{await api("POST",`/api/pago/${b.dataset.a}/anular`,{motivo:mot})}catch(x){if(x.status!==403)throw x;const a=await pedirDueno();if(!a)throw x;await api("POST",`/api/pago/${b.dataset.a}/anular`,{motivo:mot,autoriza:a})}return api("GET",`/api/venta/${id}`)});
+    if(b.id==="vr")return run(async()=>{await api("POST",`/api/venta/${id}/vuelto`,{metodo:$("#vm").value,monto:$("#vv").value});return api("GET",`/api/venta/${id}`)});
+    if(b.id==="fin"){const r=await ok(()=>api("POST",`/api/venta/${id}/cerrar`));if(r)listoVenta(r)}
+  };
+}
+function listoVenta(r){
+  const v=r.venta.venta;S.venta=null;M=null;
+  modal(`<h2 class="ctr">Venta cerrada</h2><div class="ctr gran n">${usd(v.total_usd_cents)}</div><div class="ctr bs n">${bs(v.total_bs_centimos)}</div>
+  ${r.ticket_error?`<div class="err">El ticket no se imprimió: ${esc(r.ticket_error)}. La venta quedó guardada.</div>`:`<p class="ctr">Ticket enviado a la impresora.${r.ticket&&r.ticket.cajon?" Se abrió el cajón.":""}</p>`}
+  <div class="acc"><button class="p" id="nv">Nueva venta</button>${r.ticket_error?`<button id="rt">Reintentar impresión</button>`:""}</div>`);
+  $("#modal").onclick=async e=>{const b=e.target.closest("button");if(!b)return;
+    if(b.id==="rt"){const x=await ok(()=>api("POST",`/api/venta/${v.id}/ticket`));if(x){aviso("Ticket enviado")}}
+    if(b.id==="nv"){await refrescarTasa();cerrar();render()}};
+}
+
+/* ---------- autorización del dueño y menú ---------- */
+function pedirDueno(){
+  if(S.user.rol==="dueno")return Promise.resolve(null);
+  return new Promise(res=>{
+    const prev=$("#modal").innerHTML,prevc=$("#modal").onclick;
+    modal(`<h2>Autorización del dueño</h2><label>Usuario del dueño</label><input id="an"><label>PIN</label><input id="ap" type="password" inputmode="numeric" maxlength="6">
+    <div class="acc"><button class="p" id="aok">Autorizar</button><button id="ano">Cancelar</button></div>`);
+    $("#modal").onclick=e=>{const b=e.target.closest("button");if(!b)return;
+      const a=b.id==="aok"?{nombre:$("#an").value.trim(),pin:$("#ap").value}:null;
+      $("#modal").innerHTML=prev;$("#modal").onclick=prevc;res(a)};
+  });
+}
+function mas(){
+  modal(`<h2>Más opciones</h2><div class="acc"><button data-o="ab">Ventas abiertas (${S.abiertas.length})</button><button data-o="dev">Devolución</button><button data-o="caj">Cierre de caja</button>
+  <button data-o="tas">Registrar tasa del día</button>${S.user.rol==="dueno"?`<button data-o="lic">Licencia</button><button data-o="resp">Respaldos</button><button data-o="neg">Datos del negocio</button><button data-o="usr">Nuevo cajero</button>`:""}<button data-o="cajon">Abrir cajón</button><button data-o="sal" class="m">Cerrar sesión</button><button data-o="x">Volver</button></div>`);
+  $("#modal").onclick=async e=>{const o=e.target.dataset&&e.target.dataset.o;if(!o)return;
+    if(o==="x")return cerrar();
+    if(o==="sal"){await ok(()=>api("POST","/api/logout"));TOK=null;sessionStorage.removeItem("tok");S.user=null;S.venta=null;cerrar();return render()}
+    if(o==="ab")return abiertas();if(o==="dev")return devolucion();if(o==="caj")return caja();if(o==="tas")return tasa();if(o==="neg")return negocio();if(o==="resp")return respaldos();if(o==="lic")return licencia();if(o==="usr")return cajero();
+    if(o==="cajon"){const a=await pedirDueno();const r=await ok(()=>api("POST","/api/cajon",a?{autoriza:a}:{}));if(r){cerrar();aviso("Cajón abierto")}}};
+}
+function abiertas(){
+  modal(`<h2>Ventas abiertas</h2>${S.abiertas.length?S.abiertas.map(a=>`<button style="width:100%;margin-bottom:8px" data-v="${a.id}">V-${String(a.id).padStart(6,"0")} · ${usd(a.total_usd_cents)} · ${a.lineas} línea(s)</button>`).join(""):`<div class="vacio">No hay ventas abiertas</div>`}<div class="acc"><button id="x">Volver</button></div>`);
+  $("#modal").onclick=async e=>{const b=e.target.closest("button");if(!b)return;
+    if(b.dataset.v){const v=await ok(()=>api("GET",`/api/venta/${b.dataset.v}`));if(v){S.venta=v;cerrar();render()}}else mas()};
+}
+function formulario(titulo,campos,enviar,boton){
+  modal(`<h2>${titulo}</h2>${campos.map(c=>`<label>${c[1]}</label><input id="f_${c[0]}" ${c[2]||""} autocomplete="off">`).join("")}<div id="fe"></div><div class="acc"><button class="p" id="go">${boton}</button><button id="x">Volver</button></div>`);
+  $("#modal").onclick=async e=>{const b=e.target.closest("button");if(!b)return;if(b.id==="x")return mas();
+    if(b.id==="go"){const d={};campos.forEach(c=>d[c[0]]=$("#f_"+c[0]).value);try{await enviar(d)}catch(x){$("#fe").innerHTML=`<div class="err">${esc(x.message)}</div>`}}};
+}
+function tasa(){formulario("Tasa del día (BCV)",[["valor","Bolívares por dólar","inputmode=decimal"]],async d=>{await api("POST","/api/tasa",{tipo:"bcv",valor:d.valor});await refrescarTasa();cerrar();render();aviso("Tasa guardada")},"Guardar tasa")}
+function caja(){formulario("Cierre de caja",[["contado_usd","Dólares contados en caja","inputmode=decimal"],["contado_bs","Bolívares contados en caja","inputmode=decimal"],["retirado_usd","Dólares que retira (opcional)","inputmode=decimal"],["retirado_bs","Bolívares que retira (opcional)","inputmode=decimal"]],async d=>{
+  const r=await api("POST","/api/caja/cerrar",d);const dif=(c,f)=>c===0?"Cuadra":(c>0?"Sobra ":"Falta ")+f(Math.abs(c));
+  modal(`<h2>Caja cerrada</h2><p>Dólares: <b>${dif(r.diferencia_usd_cents,usd)}</b><br>Bolívares: <b>${dif(r.diferencia_bs_centimos,bs)}</b></p>${r.advertencias.map(a=>`<div class="aviso">${esc(a)}</div>`).join("")}<div class="acc"><button class="p" id="x">Listo</button></div>`);
+  $("#modal").onclick=()=>cerrar()},"Cerrar caja")}
+function devolucion(){formulario("Devolución",[["venta","Número de venta (ej. V-000012)"],["sku","Código del producto devuelto"],["cant","Cantidad","inputmode=numeric value=1"],["motivo","Motivo"],["monto","Reembolso en dólares (vacío si aún no se reembolsa)","inputmode=decimal"]],async d=>{
+  const a=await pedirDueno();const id=+String(d.venta).replace(/\D/g,"");
+  const body={venta_id:id,items:[[d.sku,+d.cant]],motivo:d.motivo};if(a)body.autoriza=a;if(d.monto.trim())body.reembolso={metodo:"efectivo_usd",monto:d.monto};
+  const r=await api("POST","/api/devolucion",body);cerrar();aviso(`Devolución registrada por ${usd(r.total_usd_cents)}`)},"Registrar devolución")}
+
+function setup(){
+  const c=[["nn","Nombre del negocio"],["rif","RIF (ej. J-12345678-9)"],["dir","Dirección"],["tel","Teléfono"],["dn","Su usuario (dueño)"],["dp","PIN del dueño (4 a 6 números)","type=password inputmode=numeric maxlength=6"],["dp2","Repita el PIN","type=password inputmode=numeric maxlength=6"],["cn","Usuario del primer cajero (opcional)"],["cp","PIN del cajero (opcional, distinto al suyo)","type=password inputmode=numeric maxlength=6"]];
+  $("#app").innerHTML=`<div class="caja" style="margin:24px auto"><h2>Bienvenido a ZapaPOS</h2><p class="ayuda">Complete los datos de su negocio. Podrá cambiarlos después.</p>${c.map(f=>`<label>${f[1]}</label><input id="s_${f[0]}" ${f[2]||""} autocomplete="off">`).join("")}<div id="se"></div><div class="acc"><button class="p" id="sgo">Crear mi negocio</button></div></div>`;
+  $("#sgo").onclick=async()=>{const v=k=>$("#s_"+k).value.trim();
+    if(v("dp")!==v("dp2"))return $("#se").innerHTML='<div class="err">Los PIN no coinciden</div>';
+    try{const r=await api("POST","/api/instalacion",{negocio:v("nn"),rif:v("rif"),direccion:v("dir"),telefono:v("tel"),dueno_nombre:v("dn"),dueno_pin:v("dp"),cajero_nombre:v("cn"),cajero_pin:v("cp")});
+      TOK=r.token;sessionStorage.setItem("tok",TOK);localStorage.setItem("nombre",r.usuario.nombre);S.user=r.usuario;await iniciar()}
+    catch(e){$("#se").innerHTML=`<div class="err">${esc(e.message)}</div>`}};
+}
+async function negocio(){const d=await ok(()=>api("GET","/api/negocio"));if(!d)return;const a=k=>`value="${esc(d[k]||"")}"`;
+  formulario("Datos del negocio",[["negocio_nombre","Nombre del negocio",a("negocio_nombre")],["negocio_rif","RIF",a("negocio_rif")],["negocio_direccion","Dirección",a("negocio_direccion")],["negocio_telefono","Teléfono",a("negocio_telefono")],["ticket_pie","Mensaje al pie del ticket",a("ticket_pie")],["impresora_ticket","Impresora de tickets (red:IP:9100, windows:NOMBRE, serial:COM3)",a("impresora_ticket")],["respaldo_copia","Segunda copia de respaldos (ej. E:\\Respaldos en una USB)",a("respaldo_copia")]],async f=>{await api("POST","/api/negocio",f);cerrar();aviso("Datos guardados")},"Guardar")}
+async function licencia(){const r=await ok(()=>api("GET","/api/licencia"));if(!r)return;
+  modal(`<h2>Licencia y mantenimiento</h2><div class="${r.estado==="activa"&&!r.alerta?"tot":"aviso"}"><b>${esc(r.mensaje)}</b></div>
+  <p class="ayuda">Plan: ${esc(r.plan)}${r.cliente?` · ${esc(r.cliente)}`:""}<br>Código de su instalación (envíelo a su proveedor):<br><b class="n">${esc(r.instalacion_id||"")}</b></p>
+  <label for="lic">Pegue aquí la licencia que le enviaron</label><textarea id="lic" rows="4" style="width:100%;border:1px solid var(--linea);border-radius:10px;padding:8px"></textarea><div id="fe"></div>
+  <div class="acc"><button class="p" id="act">Activar licencia</button><button id="x">Volver</button></div>`);
+  $("#modal").onclick=async e=>{const b=e.target.closest("button");if(!b)return;if(b.id==="x")return mas();
+    if(b.id==="act"){try{await api("POST","/api/licencia",{texto:$("#lic").value});aviso("Licencia activada");licencia()}catch(x){$("#fe").innerHTML=`<div class="err">${esc(x.message)}</div>`}}};
+}
+async function respaldos(){const r=await ok(()=>api("GET","/api/respaldos"));if(!r)return;
+  modal(`<h2>Respaldos</h2><div class="${r.alerta?"aviso":"tot"}"><b>${esc(r.mensaje)}</b></div>${r.lista.map(x=>`<div class="pago"><span class="n">${esc(x.fecha_utc.slice(0,16).replace("T"," "))} UTC</span><small>${Math.round(x.bytes/1024)} KB</small></div>`).join("")}
+  <p class="ayuda">Guardados en: ${esc(r.carpeta)}${r.copia?`<br>Segunda copia: ${esc(r.copia)}`:""}</p><div class="acc"><button class="p" id="rn">Respaldar ahora</button><button id="x">Volver</button></div>`);
+  $("#modal").onclick=async e=>{const b=e.target.closest("button");if(!b)return;if(b.id==="x")return mas();
+    if(b.id==="rn"){b.disabled=true;const x=await ok(()=>api("POST","/api/respaldos"));if(x){aviso(x.copia_error||"Respaldo creado y verificado");respaldos()}else b.disabled=false}};
+}
+function cajero(){formulario("Nuevo cajero",[["nombre","Usuario"],["pin","PIN (4 a 6 números)","type=password inputmode=numeric maxlength=6"]],async f=>{await api("POST","/api/usuarios",f);cerrar();aviso("Cajero creado")},"Crear cajero")}
+
+(async()=>{const i=await fetch("/api/instalacion").then(r=>r.json()).catch(()=>({configurado:true}));
+  if(!i.configurado)return setup();if(TOK){S.user={};await iniciar()}else login()})();
+</script>
+</body>
+</html>

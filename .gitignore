@@ -1,0 +1,18 @@
+# Datos y secretos: NUNCA al repositorio
+*.db
+*.db-wal
+*.db-shm
+*.pem
+*.bin
+respaldos/
+backups/
+datos/
+licencia*.json
+.env
+.env.*
+# Python / pruebas
+__pycache__/
+*.pyc
+.pytest_cache/
+# Capturas y temporales
+*.tmp

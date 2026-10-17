@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>ZapaPOS Dueño</title>
+<style>
+:root{--tinta:#14213d;--papel:#eef1f4;--hoja:#fff;--linea:#d3d9e0;--texto:#1b2433;--suave:#5b6675;--caja:#f2b705;--ok:#1b7f4c;--mal:#b42318;--aviso:#8a5a00;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:var(--papel);color:var(--texto);font:16px/1.4 "Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column}
+*{box-sizing:border-box}
+button{font:inherit;min-height:48px;padding:0 18px;border-radius:10px;border:1px solid var(--linea);background:var(--hoja);cursor:pointer;font-weight:600;color:inherit}
+button:active{opacity:.75}button.p{background:var(--caja);border-color:var(--caja);color:var(--tinta)}button.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+input{font:inherit;min-height:48px;width:100%;padding:0 12px;border:1px solid var(--linea);border-radius:10px;background:var(--hoja);color:inherit}
+label{display:block;font-size:14px;color:var(--suave);margin:10px 0 4px}
+.n{font-variant-numeric:tabular-nums}
+header{background:var(--tinta);color:#fff;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 10px;display:flex;gap:12px;align-items:center;flex-shrink:0}
+header b{font-size:20px}header .sp{flex:1}
+header .chip{background:#ffffff1f;border-radius:8px;padding:4px 10px;font-size:14px}
+header button{background:#ffffff1f;border-color:transparent;color:#fff;min-height:36px}
+nav{background:var(--hoja);border-top:1px solid var(--linea);display:flex;padding-bottom:env(safe-area-inset-bottom,0px);flex-shrink:0}
+nav button{flex:1;border:none;border-radius:0;border-top:2px solid transparent;min-height:56px;font-size:13px;font-weight:600;color:var(--suave);background:transparent}
+nav button.activa{color:var(--tinta);border-top-color:var(--caja)}
+main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
+.card{background:var(--hoja);border:1px solid var(--linea);border-radius:14px;padding:16px;margin-bottom:12px}
+.grande{font-size:36px;font-weight:700;line-height:1.1;color:var(--tinta)}
+.bs{font-size:18px;color:var(--suave)}
+.fila{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--linea)}
+.fila:last-child{border-bottom:none}
+.alerta{background:#fde7e4;border:1px solid #f1a9a1;border-radius:10px;padding:8px 12px;margin-bottom:10px;color:var(--mal);font-weight:600}
+.ok-msg{background:#e5f5ec;border:1px solid #9adaba;border-radius:10px;padding:8px 12px;margin-bottom:10px;color:var(--ok);font-weight:600}
+.aviso-msg{background:#fff4d6;border:1px solid #e6c15a;border-radius:10px;padding:8px 12px;margin-bottom:10px;color:var(--aviso);font-weight:600}
+.spin{animation:sp .8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.acc{display:grid;gap:10px;margin-top:12px}
+.muted{color:var(--suave);font-size:14px}
+.badge{display:inline-block;background:var(--mal);color:#fff;border-radius:9999px;font-size:12px;font-weight:700;padding:1px 7px;margin-left:4px}
+.subtit{font-size:13px;color:var(--suave);margin:16px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.6px}
+input[type="date"]{cursor:pointer}
+#toast{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 72px);left:50%;transform:translateX(-50%);z-index:9;white-space:nowrap}
+.burb{max-width:88%;padding:10px 14px;border-radius:14px;margin:6px 0;white-space:pre-wrap;word-wrap:break-word}
+.burb.u{background:var(--tinta);color:#fff;margin-left:auto;border-bottom-right-radius:4px}
+.burb.a{background:var(--hoja);border:1px solid var(--linea);border-bottom-left-radius:4px}
+.burb.e{background:#fde7e4;border:1px solid #f1a9a1;color:var(--mal)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.chips button{min-height:40px;font-size:14px;font-weight:500}
+.entrada{position:sticky;bottom:-16px;background:var(--papel);padding:10px 0 4px;display:flex;gap:8px;margin-top:8px}.entrada input{flex:1}.entrada button{min-width:72px}
+.ber{background:#fde7e4;border:1px solid #f1a9a1;border-radius:10px;padding:8px 16px;color:var(--mal);font-weight:600}
+.bok{background:#e5f5ec;border:1px solid #9adaba;border-radius:10px;padding:8px 16px;color:var(--ok)}
+</style>
+</head>
+<body>
+<header><b>ZapaPOS</b><span class="sp"></span><span class="chip" id="hcliente"></span><button id="hcfg">⚙</button></header>
+<main id="main"><div style="text-align:center;padding:60px 0"><div class="spin" style="font-size:32px">⏳</div><br>Cargando…</div></main>
+<nav id="nav" style="display:none">
+  <button class="activa" data-t="hoy" onclick="tab(this)">📊 Hoy</button>
+  <button data-t="ia" onclick="tab(this)">🤖 Asistente</button>
+  <button data-t="tiendas" onclick="tab(this)">🏪 Tiendas</button>
+  <button data-t="config" onclick="tab(this)">⚙ Configurar</button>
+</nav>
+<div id="toast"></div>
+<script>
+"use strict";
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+const usd=c=>c==null?"—":"$"+m(c);const bs=c=>c==null?"—":"Bs "+m(c);
+const m=c=>{const s=Math.abs(c);return(c<0?"-":"")+Math.floor(s/100).toLocaleString("es-VE")+","+(s%100+"").padStart(2,"0")};
+const esc=t=>String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hoy=()=>new Date().toISOString().slice(0,10);
+
+let S={ins:[], act:0}, cargando=false;
+
+function cfg(){return JSON.parse(localStorage.getItem("zapapos_cfg")||"[]")}
+function guardar(c){localStorage.setItem("zapapos_cfg",JSON.stringify(c))}
+function ins(){return cfg()[S.act]||null}
+
+async function rpc(nombre, params, i=null){
+  const e = i!=null?cfg()[i]:ins();if(!e)throw new Error("Sin tienda configurada");
+  const url=e.url+"/rest/v1/rpc/"+nombre;
+  const r=await fetch(url,{method:"POST",headers:{apikey:e.apikey,"Content-Type":"application/json"},body:JSON.stringify(params),signal:AbortSignal.timeout(15000)});
+  if(!r.ok){const txt=await r.text().catch(()=>"");throw new Error(`${nombre}: ${r.status} ${txt.slice(0,100)}`)}
+  return r.json();
+}
+
+function aviso(t,tipo="ok"){const e=$("#toast");e.innerHTML=`<div class="${tipo==="ok"?"bok":"ber"}">${esc(t)}</div>`;clearTimeout(aviso.t);aviso.t=setTimeout(()=>e.innerHTML="",4000)}
+
+// ---- tabs ----
+function tab(b){$$("nav button").forEach(x=>x.classList.remove("activa"));b.classList.add("activa");renderTab(b.dataset.t)}
+
+function renderTab(t){
+  if(t==="hoy")return renderHoy();
+  if(t==="ia")return renderIA();
+  if(t==="tiendas")return renderTiendas();
+  if(t==="config")return renderConfig();
+}
+
+// ---- pestaña HOY ----
+async function renderHoy(){
+  const e=ins();
+  if(!e){main(`<div class="card"><p>Agregue una tienda en la pestaña <b>Configurar</b>.</p></div>`);return}
+  main(`<div class="card"><div class="spin" style="font-size:32px;text-align:center">⏳</div></div>`);
+  try{
+    const [res, est] = await Promise.all([rpc("resumen_dia",{p_instalacion:e.iid,p_token:e.tok}), rpc("estado_instalacion",{p_instalacion:e.iid,p_token:e.tok})]);
+    const h=est.horas_sin_sync!=null?Number(est.horas_sin_sync):null;
+    const sincMsg=h==null?`<div class="aviso-msg">🔴 Sin sincronización registrada todavía</div>`:
+                  h>36?`<div class="alerta">⚠ La tienda lleva ${h} h sin sincronizarse con la nube</div>`:
+                  `<div class="ok-msg">✅ Última sincronización hace ${h<1?"<1":Math.round(h)} h</div>`;
+    const rechMsg=est.eventos_rechazados>0?`<div class="aviso-msg">⚠ ${est.eventos_rechazados} evento(s) rechazado(s) en la nube — revise el editor SQL</div>`:"";
+    main(`${sincMsg}${rechMsg}<div class="card"><div class="muted">Ventas del día</div><div class="grande n">${usd(res.total_usd_cents)}</div><div class="bs n">${bs(res.total_bs_centimos)}</div></div>
+    <div class="card"><div class="fila"><span>Ventas cerradas</span><b>${res.ventas_n}</b></div><div class="fila"><span>Eventos de stock</span><b>${res.movimientos_n}</b></div>
+    <div class="fila"><span>Total en nube</span><b>${est.eventos_total}</b></div></div>
+    <div class="acc"><button class="p" onclick="renderHoy()">↺ Actualizar</button></div>`);
+  }catch(e2){main(`<div class="alerta">Error al consultar la nube:<br>${esc(e2.message)}</div><div class="acc"><button class="p" onclick="renderHoy()">Reintentar</button></div>`)}
+}
+
+// ---- pestaña ASISTENTE (IA) ----
+const SUG=["¿Qué tallas debo reponer?","¿Cuál fue mi mejor día?","¿Qué se vende más?","¿Cómo van los pagos por método?"];
+S.chat=S.chat||{};
+const fmt=t=>esc(t).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");
+function renderIA(){
+  const e=ins();if(!e){main('<div class="card"><p>Agregue una tienda en <b>Configurar</b>.</p></div>');return}
+  const c=S.chat[S.act]=S.chat[S.act]||[];
+  main((c.length?c.map(m=>`<div class="burb ${m.rol==="usuario"?"u":m.error?"e":"a"}">${m.rol==="usuario"?esc(m.texto):fmt(m.texto)}</div>`).join(""):
+    `<div class="card"><b>Pregúntele a sus datos</b><p class="muted">Responde con las ventas, el stock y los pagos de su tienda. Solo analiza: no cambia nada.</p></div>`)+
+    (S.pensando?'<div class="burb a"><span class="spin" style="display:inline-block">⏳</span> Pensando…</div>':"")+
+    `<div class="chips">${c.length?"":SUG.map(q=>`<button onclick="preguntar(this.textContent)">${esc(q)}</button>`).join("")}</div>
+    <div class="entrada"><input id="pq" placeholder="Escriba su pregunta" maxlength="600" autocomplete="off" onkeydown="if(event.key==='Enter')preguntar()"><button class="p" id="pbtn" onclick="preguntar()" ${S.pensando?"disabled":""}>Enviar</button></div>`);
+  const mn=$("#main");mn.scrollTop=mn.scrollHeight;
+}
+async function preguntar(texto){
+  const e=ins();if(!e||S.pensando)return;
+  const q=(texto||($("#pq")&&$("#pq").value)||"").trim();if(!q)return;
+  const c=S.chat[S.act]=S.chat[S.act]||[];
+  const historial=c.filter(m=>!m.error).map(m=>({rol:m.rol,texto:m.texto}));
+  c.push({rol:"usuario",texto:q});S.pensando=true;renderIA();
+  try{
+    const r=await fetch(e.url+"/functions/v1/asistente",{method:"POST",headers:{"Content-Type":"application/json",apikey:e.apikey},
+      body:JSON.stringify({instalacion:e.iid,token:e.tok,pregunta:q,historial,dias:30}),signal:AbortSignal.timeout(40000)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||"No se pudo consultar al asistente ("+r.status+")");
+    c.push({rol:"asistente",texto:j.respuesta});
+    if(j.restantes!=null&&j.restantes<=5)aviso("Le quedan "+j.restantes+" consultas hoy","ok");
+  }catch(x){c.push({rol:"asistente",texto:x.message,error:true})}
+  S.pensando=false;renderIA();
+}
+
+// ---- pestaña TIENDAS (multi-tienda) ----
+function renderTiendas(){
+  const c=cfg();
+  main(c.length===0?`<div class="card"><p class="muted">Todavía no hay tiendas. Agréguelas en <b>Configurar</b>.</p></div>`:
+    c.map((e,i)=>`<div class="card" style="cursor:pointer;${i===S.act?"border-color:var(--tinta)":""}" onclick="S.act=${i};actualizarHeader();renderHoy();document.querySelector('[data-t=hoy]').click()">
+    <div class="fila"><b>${esc(e.nombre||"Tienda "+(i+1))}</b>${i===S.act?"<span class='badge'>activa</span>":""}</div>
+    <div class="muted">${esc(e.url.replace("https://","").slice(0,35))}</div></div>`).join(""));
+}
+
+// ---- pestaña CONFIG ----
+function renderConfig(){
+  const c=cfg(), n=c.length;
+  main(`<div class="subtit">Mis tiendas</div>${c.map((e,i)=>`<div class="card"><div class="fila"><b>${esc(e.nombre||"Tienda "+(i+1))}</b><button onclick="borrar(${i})" style="min-height:36px;color:var(--mal)">✕</button></div><div class="muted n" style="word-break:break-all">${esc(e.iid)}</div></div>`).join("")}
+  <div class="subtit">Agregar tienda</div>
+  <div class="card">
+    <label>Nombre (ej. "Tienda Principal")</label><input id="cnombre" autocomplete="off">
+    <label>Código de instalación (instalacion_id de la caja)</label><input id="ciid" autocomplete="off" style="font-size:13px">
+    <label>URL de la nube</label><input id="curl" value="https://optnvredjvjibkkdhmxz.supabase.co">
+    <label>Clave pública (apikey)</label><input id="capikey" value="sb_publishable_LrGjXiYMaw0Dc8fdyiID3w_gErPBd4G">
+    <label>Token de la tienda</label><input id="ctok" type="password" autocomplete="off">
+    <div class="acc"><button class="p" onclick="agregar()">Agregar tienda</button></div>
+    <div id="cerr"></div>
+  </div>`);
+}
+
+async function agregar(){
+  const e={nombre:$("#cnombre").value.trim(),iid:$("#ciid").value.trim(),url:$("#curl").value.trim(),apikey:$("#capikey").value.trim(),tok:$("#ctok").value.trim()};
+  if(!e.iid||!e.url||!e.apikey||!e.tok){$("#cerr").innerHTML='<div class="alerta">Complete todos los campos</div>';return}
+  $("#cerr").innerHTML='<div class="muted">Verificando conexión…</div>';
+  try{await rpc("estado_instalacion",{p_instalacion:e.iid,p_token:e.tok},cfg().length)}
+  catch(x){$("#cerr").innerHTML=`<div class="alerta">No se pudo conectar: ${esc(x.message)}</div>`;return}
+  const c=cfg();c.push(e);guardar(c);S.act=c.length-1;actualizarHeader();aviso("Tienda agregada");renderConfig();
+}
+
+function borrar(i){if(!confirm("¿Eliminar esta tienda de la app?"))return;const c=cfg();c.splice(i,1);guardar(c);S.act=Math.max(0,S.act-1);actualizarHeader();renderConfig()}
+
+function main(h){$("#main").innerHTML=h}
+function actualizarHeader(){const e=ins();$("#hcliente").textContent=e?(e.nombre||"Tienda"):"";}
+
+$("#hcfg").onclick=()=>document.querySelector('[data-t=config]').click();
+
+// ---- arranque ----
+const tiene=cfg().length>0;
+actualizarHeader();
+if(tiene){$("#nav").style.display="flex";renderHoy();}
+else{main(`<div class="card" style="margin-top:40px"><h2>Bienvenido al panel del dueño</h2><p>Para empezar agregue su primera tienda.<br>Necesitará el <b>código de instalación</b> que aparece en la caja y el <b>token</b> que le entregó su proveedor.</p><div class="acc"><button class="p" onclick='$("#nav").style.display="flex";renderConfig();document.querySelector("[data-t=config]").classList.add("activa")'>Agregar mi primera tienda</button></div></div>`)}
+</script>
+</body>
+</html>
