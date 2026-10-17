@@ -27,6 +27,32 @@ python -m unittest discover -s tests -v  # pruebas
 node --test nube/funciones/asistente/test.mjs
 ```
 
+## Configuración del servidor del proveedor
+
+El servidor del proveedor configura la URL centralizada de Supabase y su clave
+pública mediante variables de entorno. El cliente final no debe configurar
+estos valores:
+
+```bash
+export ZAPAPOS_URL_NUBE="https://xxxx.supabase.co"
+export ZAPAPOS_APIKEY="sb_publishable_xxxx"
+python -m app.server --db zapateria.db
+```
+
+El panel del dueño debe abrirse mediante `server.py` en `/dueno`. No se debe
+abrir `app/dueno.html` directamente con `file://`, porque los valores del
+proveedor se inyectan al servir el template. Si las variables no están
+configuradas, el panel muestra un aviso de soporte y conserva las tiendas
+locales en modo de solo lectura.
+
+La clave pública no es una `service_role`: cada instalación continúa aislada
+por `instalacion_id` y token. `.env.example` contiene únicamente nombres de
+variables vacíos para desarrollo; nunca se deben guardar tokens o claves
+secretas en el repositorio.
+
+La prueba de integración real con Supabase se omite si no están definidas
+`ZAPAPOS_URL_NUBE`, `ZAPAPOS_APIKEY` y `ZAPAPOS_NUBE_TOKEN`.
+
 ## Estado (ver `docs/ESTADO.md`)
 Completo y probado: motor de ventas, pagos, inventario, precios, etiquetas, reportes, respaldos/restauración, actualizaciones firmadas,
 licencias, base fiscal, sincronización a la nube, panel del dueño y asistente de IA (función Edge, proveedor configurable).

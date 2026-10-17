@@ -4,4 +4,5 @@ pillow>=10           # etiquetas PNG
 reportlab>=4         # etiquetas PDF vectoriales
 # Solo para pruebas / desarrollo
 playwright>=1.45     # pruebas de pantalla (opcional: se omiten si no está)
+pypdfium2>=4.0,<6.0  # pruebas de etiquetas PDF (opcional)
 # Para el instalador en Windows (impresión directa de tickets): pywin32  (opcional)

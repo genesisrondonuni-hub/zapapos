@@ -6,11 +6,12 @@ from core import inventario as I, negocio as N
 from tools import sync as SY
 from tools.db import connect, migrate
 
-NUBE_URL = "https://optnvredjvjibkkdhmxz.supabase.co"
-NUBE_APIKEY = "sb_publishable_LrGjXiYMaw0Dc8fdyiID3w_gErPBd4G"
+NUBE_URL = os.environ.get("ZAPAPOS_URL_NUBE", "")
+NUBE_APIKEY = os.environ.get("ZAPAPOS_APIKEY", "")
 
 
-@unittest.skipUnless(os.environ.get("ZAPAPOS_NUBE_TOKEN"), "ZAPAPOS_NUBE_TOKEN no está fijado: prueba omitida (solo para el proveedor)")
+@unittest.skipUnless(all(os.environ.get(k) for k in ("ZAPAPOS_URL_NUBE", "ZAPAPOS_APIKEY", "ZAPAPOS_NUBE_TOKEN")),
+                     "Configuración de nube no está fijada: prueba omitida (solo para el proveedor)")
 class NubeReal(unittest.TestCase):
     """Para correr esta prueba: ZAPAPOS_NUBE_TOKEN=<token> python -m unittest tests.test_sync_real -v"""
     def setUp(self):

@@ -1,4 +1,5 @@
 import http.client, json, os, shutil, sys, tempfile, threading, unittest
+from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from playwright.sync_api import sync_playwright
@@ -8,8 +9,15 @@ from app.server import crear_servidor
 from core import negocio as N
 from tests.test_reportes import Base
 
-URL_NUBE = "https://optnvredjvjibkkdhmxz.supabase.co"
-APIKEY   = "sb_publishable_LrGjXiYMaw0Dc8fdyiID3w_gErPBd4G"
+# Valores fake de test. NO son credenciales reales.
+# Se usan "" como "ausente" para simular panel sin configurar.
+if not os.environ.get("ZAPAPOS_URL_NUBE"):
+    os.environ["ZAPAPOS_URL_NUBE"] = "https://test.example.invalid"
+if not os.environ.get("ZAPAPOS_APIKEY"):
+    os.environ["ZAPAPOS_APIKEY"] = "test-apikey-NOT-REAL"
+
+URL_NUBE = os.environ["ZAPAPOS_URL_NUBE"]
+APIKEY = os.environ["ZAPAPOS_APIKEY"]
 
 
 class ServidorBase(Base):
@@ -66,6 +74,33 @@ class HTTP(ServidorBase):
         self.assertIn(URL_NUBE.encode(), d)
         self.assertIn(APIKEY.encode(), d)
 
+    def test_panel_configurado_inyecta_valores_y_elimina_placeholders(self):
+        with patch.dict(os.environ, {
+            "ZAPAPOS_URL_NUBE": URL_NUBE,
+            "ZAPAPOS_APIKEY": APIKEY,
+        }, clear=False):
+            st, _, d = self.get("/dueno")
+        self.assertEqual(st, 200)
+        html = d.decode("utf-8")
+        self.assertIn('data-configurado="1"', html)
+        self.assertIn(URL_NUBE, html)
+        self.assertIn(APIKEY, html)
+        self.assertNotIn("{{URL_NUBE}}", html)
+        self.assertNotIn("{{APIKEY}}", html)
+        self.assertNotIn("{{CONFIGURADO}}", html)
+
+    def test_panel_sin_configurar_devuelve_200_y_no_expone_formulario_activo(self):
+        with patch.dict(os.environ, {
+            "ZAPAPOS_URL_NUBE": "",
+            "ZAPAPOS_APIKEY": "",
+        }, clear=False):
+            st, _, d = self.get("/dueno")
+        self.assertEqual(st, 200)
+        html = d.decode("utf-8")
+        self.assertIn('data-configurado="0"', html)
+        self.assertNotIn("sb_publishable_", html)
+        self.assertNotIn("optnvredjvjibkkdhmxz", html)
+
 
 @unittest.skipUnless(sync_playwright, "playwright no instalado")
 class Pantalla(ServidorBase):
@@ -88,6 +123,47 @@ class Pantalla(ServidorBase):
             self.assertIn(APIKEY[:20], pg.input_value("#capikey"))
             pg.screenshot(path="/tmp/dueno_test_config.png")
             b.close()
+
+    def test_playwright_sin_configuracion_muestra_banner_y_tiendas_readonly(self):
+        tienda = {"nombre": "Tienda guardada", "iid": "11111111-1111-1111-1111-111111111111",
+                  "url": URL_NUBE, "apikey": APIKEY, "tok": "TOKEN-LOCAL"}
+        with patch.dict(os.environ, {
+            "ZAPAPOS_URL_NUBE": "",
+            "ZAPAPOS_APIKEY": "",
+        }, clear=False):
+            with sync_playwright() as p:
+                b = p.chromium.launch()
+                pg = self.pg(b, [tienda])
+                pg.click('[data-t="config"]')
+                pg.wait_for_selector(".alerta")
+                self.assertIn("Panel no configurado", pg.inner_text("#main"))
+                self.assertFalse(pg.is_visible("#cnombre"))
+                self.assertIn("Tienda guardada", pg.inner_text("#main"))
+                self.assertFalse(pg.locator("button:has-text('✕')").count())
+                b.close()
+
+    def test_playwright_configurado_muestra_formulario_readonly(self):
+        with patch.dict(os.environ, {
+            "ZAPAPOS_URL_NUBE": URL_NUBE,
+            "ZAPAPOS_APIKEY": APIKEY,
+        }, clear=False):
+            with sync_playwright() as p:
+                b = p.chromium.launch()
+                pg = self.pg(b)
+                # button.p es el botón de bienvenida ("Agregar primera tienda").
+                # Si el HTML de bienvenida cambia ese selector, actualizar acá.
+                # Depende del HTML de bienvenida, no del panel configurado.
+                pg.click("button.p")
+                pg.wait_for_selector("#cnombre")
+                self.assertNotIn("Panel no configurado", pg.inner_text("#main"))
+                self.assertTrue(pg.is_visible("#cnombre"))
+                self.assertEqual(pg.input_value("#curl"), URL_NUBE)
+                self.assertEqual(pg.input_value("#capikey"), APIKEY)
+                self.assertFalse(pg.locator("#curl").is_editable())
+                self.assertFalse(pg.locator("#capikey").is_editable())
+                pg.click("button:has-text('Agregar tienda')")
+                self.assertIn("Complete todos los campos", pg.inner_text("#cerr"))
+                b.close()
 
     def test_con_tienda_muestra_nav_y_carga_la_pestaña(self):
         tienda = {"nombre": "Mi Tienda", "iid": "11111111-1111-1111-1111-111111111111",

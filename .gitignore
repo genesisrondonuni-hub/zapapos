@@ -10,6 +10,7 @@ datos/
 licencia*.json
 .env
 .env.*
+!.env.example
 # Python / pruebas
 __pycache__/
 *.pyc

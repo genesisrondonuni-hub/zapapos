@@ -1,6 +1,7 @@
 """Servidor local de la caja: API JSON + pantalla web en 127.0.0.1 (sin internet, sin dependencias).
 Solo acepta conexiones de la propia PC, exige sesión por PIN y revisa el encabezado Host."""
 import argparse, json, os, re, secrets, sys, threading, time, traceback
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
@@ -370,7 +371,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._enviar(200, f.read_bytes() if f.exists() else b"<h1>ZapaPOS</h1>", "text/html; charset=utf-8")
         if metodo == "GET" and url.path in ("/dueno", "/dueno.html"):
             f = ESTATICO.parent / "dueno.html"
-            return self._enviar(200, f.read_bytes() if f.exists() else b"<h1>Panel del dueno</h1>", "text/html; charset=utf-8")
+            if not f.exists():
+                return self._enviar(200, b"<h1>Panel del dueno</h1>", "text/html; charset=utf-8")
+            contenido = f.read_text(encoding="utf-8")
+            url_nube = os.environ.get("ZAPAPOS_URL_NUBE", "")
+            api_key = os.environ.get("ZAPAPOS_APIKEY", "")
+            configurado = "1" if url_nube and api_key else "0"
+            contenido = contenido.replace("{{URL_NUBE}}", escape(url_nube, quote=True))
+            contenido = contenido.replace("{{APIKEY}}", escape(api_key, quote=True))
+            contenido = contenido.replace("{{CONFIGURADO}}", configurado)
+            return self._enviar(200, contenido.encode("utf-8"), "text/html; charset=utf-8")
         for m, rx, login, fn in RUTAS:
             g = rx.match(url.path)
             if m == metodo and g:

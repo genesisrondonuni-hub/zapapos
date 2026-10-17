@@ -51,7 +51,7 @@ input[type="date"]{cursor:pointer}
 .bok{background:#e5f5ec;border:1px solid #9adaba;border-radius:10px;padding:8px 16px;color:var(--ok)}
 </style>
 </head>
-<body>
+<body data-configurado="{{CONFIGURADO}}">
 <header><b>ZapaPOS</b><span class="sp"></span><span class="chip" id="hcliente"></span><button id="hcfg">⚙</button></header>
 <main id="main"><div style="text-align:center;padding:60px 0"><div class="spin" style="font-size:32px">⏳</div><br>Cargando…</div></main>
 <nav id="nav" style="display:none">
@@ -156,18 +156,35 @@ function renderTiendas(){
 
 // ---- pestaña CONFIG ----
 function renderConfig(){
-  const c=cfg(), n=c.length;
-  main(`<div class="subtit">Mis tiendas</div>${c.map((e,i)=>`<div class="card"><div class="fila"><b>${esc(e.nombre||"Tienda "+(i+1))}</b><button onclick="borrar(${i})" style="min-height:36px;color:var(--mal)">✕</button></div><div class="muted n" style="word-break:break-all">${esc(e.iid)}</div></div>`).join("")}
-  <div class="subtit">Agregar tienda</div>
-  <div class="card">
-    <label>Nombre (ej. "Tienda Principal")</label><input id="cnombre" autocomplete="off">
-    <label>Código de instalación (instalacion_id de la caja)</label><input id="ciid" autocomplete="off" style="font-size:13px">
-    <label>URL de la nube</label><input id="curl" value="https://optnvredjvjibkkdhmxz.supabase.co">
-    <label>Clave pública (apikey)</label><input id="capikey" value="sb_publishable_LrGjXiYMaw0Dc8fdyiID3w_gErPBd4G">
-    <label>Token de la tienda</label><input id="ctok" type="password" autocomplete="off">
-    <div class="acc"><button class="p" onclick="agregar()">Agregar tienda</button></div>
-    <div id="cerr"></div>
-  </div>`);
+  const configurado = document.body.dataset.configurado === "1";
+  const c = cfg();
+  const banner = configurado ? "" : `
+    <div class="alerta" style="margin-bottom:12px">
+      <b>Panel no configurado</b><br>
+      El proveedor aún no configuró este sistema.
+      Contactá a soporte indicando: "panel sin configurar".
+    </div>`;
+  const listaTiendas = c.length === 0 ? "" : `
+    <div class="subtit">Mis tiendas</div>
+    ${c.map((e,i)=>`<div class="card">
+      <div class="fila">
+        <b>${esc(e.nombre||"Tienda "+(i+1))}</b>
+        ${configurado ? `<button onclick="borrar(${i})" style="min-height:36px;color:var(--mal)">✕</button>` : ""}
+      </div>
+      <div class="muted n" style="word-break:break-all">${esc(e.iid)}</div>
+    </div>`).join("")}`;
+  const formulario = configurado ? `
+    <div class="subtit">Agregar tienda</div>
+    <div class="card">
+      <label>Nombre (ej. "Tienda Principal")</label><input id="cnombre" autocomplete="off">
+      <label>Código de instalación (instalacion_id de la caja)</label><input id="ciid" autocomplete="off" style="font-size:13px">
+      <label>URL de la nube</label><input id="curl" value="{{URL_NUBE}}" readonly>
+      <label>Clave pública (apikey)</label><input id="capikey" value="{{APIKEY}}" readonly>
+      <label>Token de la tienda</label><input id="ctok" type="password" autocomplete="off">
+      <div class="acc"><button class="p" onclick="agregar()">Agregar tienda</button></div>
+      <div id="cerr"></div>
+    </div>` : "";
+  main(banner + listaTiendas + formulario);
 }
 
 async function agregar(){
