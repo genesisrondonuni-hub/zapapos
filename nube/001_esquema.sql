@@ -1,5 +1,6 @@
 -- ZapaPOS · plataforma en la nube (Supabase / Postgres).
--- ESTADO: APLICADO el 2026-10-13 al proyecto 'zapapos-nube' (ref optnvredjvjibkkdhmxz, us-east-1) y probado en vivo con nube/prueba_seguridad.sql.
+-- Estado: esquema aplicado en proyecto Supabase (ref <ref-proyecto>, región <region>),
+-- verificado con nube/prueba_seguridad.sql.
 -- Avisos del linter de Supabase aceptados a propósito: (1) RLS sin políticas = acceso directo denegado; (2) sync_push/sync_estado ejecutables por 'anon' (la autorización la da el token).
 -- Diseño: cada instalación (zapatería) envía eventos idempotentes; nadie lee ni escribe las tablas directamente.
 -- Solo las funciones de abajo, que validan el token de la instalación, tocan los datos. Row Level Security activo y sin políticas = acceso directo denegado.

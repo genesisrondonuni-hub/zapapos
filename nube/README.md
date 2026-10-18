@@ -1,6 +1,6 @@
 # Nube ZapaPOS (Supabase)
 
-Proyecto: `zapapos-nube` · ref `optnvredjvjibkkdhmxz` · región us-east-1 · URL: `https://optnvredjvjibkkdhmxz.supabase.co`
+Proyecto: `<nombre-proyecto>` · ref `<ref-proyecto>` · región `<region>` · URL: `https://<ref-proyecto>.supabase.co`
 
 ## Dar de alta una zapatería (solo el proveedor)
 1. En el editor SQL del proyecto: `select public.registrar_instalacion('<instalacion_id de la caja>', 'Nombre del cliente', 'pro');`
@@ -14,9 +14,9 @@ Proyecto: `zapapos-nube` · ref `optnvredjvjibkkdhmxz` · región us-east-1 · U
 - La clave `service_role` NUNCA va en una caja ni en el código.
 
 ## URL y clave pública (para configurar cada caja)
-- URL: `https://optnvredjvjibkkdhmxz.supabase.co`
+- URL: `https://<ref-proyecto>.supabase.co`
 - Clave pública (apikey / anon, para copiar en Datos del negocio → nube_apikey):
-  `sb_publishable_LrGjXiYMaw0Dc8fdyiID3w_gErPBd4G`
+  `sb_publishable_<tu-clave-publica>`
   Esta clave es pública. Nunca ponga `service_role` en ninguna caja.
 
 ## Registrar una nueva instalación
