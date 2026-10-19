@@ -8,6 +8,7 @@ from core.reportes import _iso
 from tools.db import connect, transaccion
 
 BACKOFF_BASE, BACKOFF_MAX = 60, 6 * 3600           # segundos: 1 min, 2, 4 ... hasta 6 h
+MAX_INTENTOS = 20  # al superar, el evento queda descartado
 
 
 class SyncError(Exception):
@@ -61,12 +62,18 @@ def _espera(intentos):
 def estado(con) -> dict:
     g = lambda w: con.execute(f"SELECT COUNT(*) FROM outbox WHERE {w}").fetchone()[0]
     u = con.execute("SELECT MAX(enviado_en) FROM outbox").fetchone()[0]
-    return {"pendientes": g("enviado_en IS NULL"), "enviados": g("enviado_en IS NOT NULL"), "con_reintentos": g("enviado_en IS NULL AND intentos>0"), "ultimo_envio": u}
+    return {
+        "pendientes": g("enviado_en IS NULL AND descartado_en IS NULL"),
+        "enviados": g("enviado_en IS NOT NULL"),
+        "descartados": g("descartado_en IS NOT NULL"),
+        "con_reintentos": g("enviado_en IS NULL AND descartado_en IS NULL AND intentos>0"),
+        "ultimo_envio": u,
+    }
 
 
 def enviar_lote(con, transporte, ahora=None, lote=100) -> dict:
     ahora = ahora or datetime.now(timezone.utc)
-    filas = con.execute("SELECT id,uuid,entidad,operacion,payload,creado_en,intentos FROM outbox WHERE enviado_en IS NULL AND "
+    filas = con.execute("SELECT id,uuid,entidad,operacion,payload,creado_en,intentos FROM outbox WHERE enviado_en IS NULL AND descartado_en IS NULL AND "
                         "(proximo_intento IS NULL OR proximo_intento<=?) ORDER BY id LIMIT ?", (_iso(ahora), lote)).fetchall()
     if not filas:
         return {"enviados": 0, "fallidos": 0, "error": None}
@@ -84,7 +91,17 @@ def enviar_lote(con, transporte, ahora=None, lote=100) -> dict:
         for f in ok:
             con.execute("UPDATE outbox SET enviado_en=? WHERE id=?", (_iso(ahora), f[0]))
         for f in mal:
-            con.execute("UPDATE outbox SET intentos=intentos+1, proximo_intento=? WHERE id=?", (_iso(ahora + timedelta(seconds=_espera(f[6]))), f[0]))
+            intentos_nuevos = f[6] + 1
+            if intentos_nuevos >= MAX_INTENTOS:
+                con.execute(
+                    "UPDATE outbox SET intentos=?, descartado_en=?, motivo_descarte=? WHERE id=?",
+                    (intentos_nuevos, _iso(ahora), f"tope de intentos ({MAX_INTENTOS})", f[0])
+                )
+            else:
+                con.execute(
+                    "UPDATE outbox SET intentos=intentos+1, proximo_intento=? WHERE id=?",
+                    (_iso(ahora + timedelta(seconds=_espera(f[6]))), f[0])
+                )
     return {"enviados": len(ok), "fallidos": len(mal), "error": error}
 
 

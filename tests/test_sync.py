@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.server import crear_servidor
 from core import inventario as I, negocio as N, pos, pagos as PG, licencia as LIC
+from core.reportes import _iso
 from tools import sync as SY
 from tools.sync import SyncError, TransporteHTTP
 from tests.test_reportes import Base, NEG
@@ -96,6 +97,47 @@ class S(Base):
         nube.rechazar = set()
         self.assertEqual(SY.sincronizar(self.con, nube, T0 + timedelta(minutes=5))["enviados"], 1)
         self.assertEqual(len(nube.recibidos), len(self.eventos()))
+
+    def test_evento_que_falla_MAX_INTENTOS_veces_queda_descartado(self):
+        """Tras MAX_INTENTOS fallos, el evento se descarta y no bloquea la cola."""
+        SY.encolar_catalogo(self.con)
+        nube = Nube(); nube.offline = True
+        # Simular MAX_INTENTOS intentos
+        t = T0
+        for i in range(SY.MAX_INTENTOS):
+            r = SY.sincronizar(self.con, nube, t)
+            t = t + timedelta(hours=7)  # saltar backoff
+        # El catálogo y todos los movimientos deberían estar descartados
+        descartados = self.con.execute("SELECT COUNT(*) FROM outbox WHERE descartado_en IS NOT NULL").fetchone()[0]
+        self.assertGreater(descartados, 0)
+        # Ya no se reintentan
+        r = SY.sincronizar(self.con, nube, t)
+        self.assertEqual(r["enviados"], 0)
+        self.assertEqual(r["fallidos"], 0)
+
+    def test_evento_descartado_no_bloquea_cola_de_los_demas(self):
+        """Un evento veneno no impide enviar el resto."""
+        SY.encolar_catalogo(self.con)
+        # Forzar un evento a estado descartado manualmente
+        self.con.execute("UPDATE outbox SET descartado_en=?, motivo_descarte='test' WHERE uuid LIKE 'catalogo:%'", (_iso(T0),))
+        self.con.commit()
+        # Enviar el resto
+        nube = Nube()
+        r = SY.sincronizar(self.con, nube, T0)
+        self.assertEqual(r["fallidos"], 0)
+        self.assertIsNone(r["error"])
+        self.assertGreater(len(nube.recibidos), 0)
+
+    def test_estado_reporta_descartados(self):
+        """estado() debe incluir la clave 'descartados'."""
+        e = SY.estado(self.con)
+        self.assertIn("descartados", e)
+        self.assertEqual(e["descartados"], 0)
+        # Insertar un descartado
+        self.con.execute("UPDATE outbox SET descartado_en=?, motivo_descarte='test' WHERE id=(SELECT MIN(id) FROM outbox)", (_iso(T0),))
+        self.con.commit()
+        e = SY.estado(self.con)
+        self.assertEqual(e["descartados"], 1)
 
     def test_enviar_lote_reporta_error_cuando_push_devuelve_menos_uuids(self):
         """Si push() no lanza excepción pero devuelve menos uuids, error != None."""
