@@ -64,17 +64,24 @@ class S(Base):
         self.assertEqual(len(nube.recibidos), total)
 
     def test_sin_internet_no_se_pierde_nada_y_reintenta_con_espera_creciente(self):
+        """Sin internet no se pierde nada y el backoff crece entre intentos.
+
+        `_espera` se mockea para eliminar el jitter (verificado por separado en
+        test_jitter_en_backoff_dentro_de_rango_y_varia). Este test verifica la
+        lógica de reintento: no pérdida, backoff creciente, recuperación.
+        """
+        from unittest.mock import patch
         nube = Nube(); nube.offline = True
-        r = SY.sincronizar(self.con, nube, T0)
-        self.assertEqual((r["enviados"], "sin internet" in r["error"]), (0, True))
-        pend = self.eventos(pendientes=True); self.assertTrue(pend)
-        self.assertTrue(all(e[3] == 1 for e in pend))                                   # un intento anotado
-        llamadas = len(nube.lotes)
-        SY.sincronizar(self.con, nube, T0 + timedelta(seconds=30))                      # todavía dentro de la espera (60 s)
-        self.assertEqual(len(nube.lotes), llamadas)
-        SY.sincronizar(self.con, nube, T0 + timedelta(seconds=61))                      # ya toca: falla otra vez, espera 120 s
-        self.assertEqual(self.eventos(pendientes=True)[0][3], 2)
-        self.assertEqual(SY._espera(0), 60); self.assertEqual(SY._espera(1), 120); self.assertEqual(SY._espera(30), 6 * 3600)   # tope de 6 horas
+        with patch("tools.sync._espera", side_effect=lambda n: 60 * 2 ** min(n, 20)):
+            r = SY.sincronizar(self.con, nube, T0)
+            self.assertEqual((r["enviados"], "sin internet" in r["error"]), (0, True))
+            pend = self.eventos(pendientes=True); self.assertTrue(pend)
+            self.assertTrue(all(e[3] == 1 for e in pend))                                   # un intento anotado
+            llamadas = len(nube.lotes)
+            SY.sincronizar(self.con, nube, T0 + timedelta(seconds=30))                      # todavía dentro de la espera (60 s)
+            self.assertEqual(len(nube.lotes), llamadas)
+            SY.sincronizar(self.con, nube, T0 + timedelta(seconds=61))                      # ya toca: falla otra vez, espera 120 s
+            self.assertEqual(self.eventos(pendientes=True)[0][3], 2)
         nube.offline = False                                                            # vuelve el internet
         r = SY.sincronizar(self.con, nube, T0 + timedelta(minutes=10))
         self.assertEqual((r["fallidos"], r["error"], SY.estado(self.con)["pendientes"]), (0, None, 0))
@@ -89,6 +96,40 @@ class S(Base):
         nube.rechazar = set()
         self.assertEqual(SY.sincronizar(self.con, nube, T0 + timedelta(minutes=5))["enviados"], 1)
         self.assertEqual(len(nube.recibidos), len(self.eventos()))
+
+    def test_enviar_lote_reporta_error_cuando_push_devuelve_menos_uuids(self):
+        """Si push() no lanza excepción pero devuelve menos uuids, error != None."""
+        SY.encolar_catalogo(self.con)
+        rechazado = self.eventos("movimiento")[0][0]
+        nube = Nube(); nube.rechazar = {rechazado}
+        r = SY.enviar_lote(self.con, nube, T0)
+        self.assertEqual(r["fallidos"], 1)
+        self.assertIsNotNone(r["error"])
+        self.assertIn("sin confirmación", r["error"])
+
+    def test_sincronizar_propaga_error_de_fallidos_parciales(self):
+        """sincronizar no debe devolver error=None cuando hay fallidos."""
+        SY.encolar_catalogo(self.con)
+        rechazado = self.eventos("movimiento")[0][0]
+        nube = Nube(); nube.rechazar = {rechazado}
+        r = SY.sincronizar(self.con, nube, T0)
+        self.assertEqual(r["fallidos"], 1)
+        self.assertIsNotNone(r["error"])
+        self.assertIn("sin confirmación", r["error"])
+
+    def test_jitter_en_backoff_dentro_de_rango_y_varia(self):
+        """_espera aplica jitter 50-100% y varía entre llamadas."""
+        import random
+        # Rangos: base * [0.5, 1.0]
+        for intentos, (lo, hi) in [(0, (30, 60)), (1, (60, 120)), (5, (960, 1920)), (9, (10800, 21600))]:
+            for _ in range(10):
+                v = SY._espera(intentos)
+                self.assertGreaterEqual(v, lo, f"intentos={intentos} v={v} < {lo}")
+                self.assertLessEqual(v, hi, f"intentos={intentos} v={v} > {hi}")
+        # Varia entre llamadas (con seed fijo, 20 llamadas no deben dar lo mismo)
+        random.seed(42)
+        vals = [SY._espera(5) for _ in range(20)]
+        self.assertGreater(len(set(vals)), 1, "jitter debe variar entre llamadas")
 
     def test_lotes(self):
         for _ in range(250):

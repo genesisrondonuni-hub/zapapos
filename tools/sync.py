@@ -1,7 +1,7 @@
 """Sincronización hacia la nube (solo envío por ahora). La caja NUNCA espera a la nube: todo se anota primero en la cola local (outbox)
 y se envía cuando hay conexión, con reintentos espaciados. Cada evento lleva un uuid: reenviarlo no duplica nada.
 Contrato del transporte: push(eventos: list[dict]) -> list[str] con los uuid que la nube confirmó (aceptados o ya recibidos)."""
-import hashlib, json, urllib.error, urllib.request, uuid
+import hashlib, json, random, urllib.error, urllib.request, uuid
 from datetime import datetime, timedelta, timezone
 from core import licencia as LIC
 from core.reportes import _iso
@@ -54,7 +54,8 @@ def encolar_catalogo(con) -> bool:
 
 
 def _espera(intentos):
-    return min(BACKOFF_BASE * 2 ** min(intentos, 20), BACKOFF_MAX)
+    base = min(BACKOFF_BASE * 2 ** min(intentos, 20), BACKOFF_MAX)
+    return int(base * (0.5 + random.random() * 0.5))  # jitter 50-100%
 
 
 def estado(con) -> dict:
@@ -77,6 +78,8 @@ def enviar_lote(con, transporte, ahora=None, lote=100) -> dict:
         acks, error = set(), str(e)[:300]
     ok = [f for f in filas if f[1] in acks]
     mal = [f for f in filas if f[1] not in acks]
+    if mal and error is None:
+        error = f"{len(mal)} evento(s) sin confirmación de la nube"
     with transaccion(con):
         for f in ok:
             con.execute("UPDATE outbox SET enviado_en=? WHERE id=?", (_iso(ahora), f[0]))
@@ -93,7 +96,8 @@ def sincronizar(con, transporte, ahora=None, max_lotes=20) -> dict:
         r = enviar_lote(con, transporte, ahora)
         tot["enviados"] += r["enviados"]; tot["fallidos"] += r["fallidos"]
         if r["error"] or r["fallidos"]:
-            tot["error"] = r["error"]; break
+            tot["error"] = r["error"] or f"{r['fallidos']} evento(s) sin confirmación"
+            break
         if r["enviados"] == 0:
             break
     return tot
