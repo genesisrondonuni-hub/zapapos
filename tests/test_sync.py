@@ -107,6 +107,48 @@ class S(Base):
         v = {x["sku"]: x for x in json.loads(cat[0][2])["variantes"]}[NEG]
         self.assertEqual((v["marca"], v["modelo"], v["talla"], v["color"]), ("Gamo", "Flor", "38", "negro"))
 
+    def test_catalogo_reenviar_a_b_a_genera_uuids_distintos(self):
+        """A→B→A genera tres eventos con UUIDs distintos.
+
+        La idempotencia real vive en la huella, que evita reencolar una foto
+        cuando el catálogo no cambió. El UUID es único por envío y no deriva de
+        la huella: si A1 y A3 compartieran UUID, la nube podría colapsarlos con
+        ON CONFLICT DO NOTHING y dejar B como catálogo final.
+        """
+        # Estado A
+        self.assertTrue(SY.encolar_catalogo(self.con))
+
+        # Cambio a B
+        self.con.execute(
+            "UPDATE variantes SET precio_usd_cents=precio_usd_cents+100 WHERE sku=?",
+            (NEG,),
+        )
+        self.assertTrue(SY.encolar_catalogo(self.con))
+
+        # Vuelta a A
+        self.con.execute(
+            "UPDATE variantes SET precio_usd_cents=precio_usd_cents-100 WHERE sku=?",
+            (NEG,),
+        )
+        self.assertTrue(SY.encolar_catalogo(self.con))
+
+        cat = self.eventos("catalogo")
+        self.assertEqual(len(cat), 3, "A→B→A debe generar 3 eventos, no colapsarlos")
+
+        uuids = [e[0] for e in cat]
+        self.assertEqual(len(set(uuids)), 3, "los 3 eventos deben tener UUIDs distintos")
+
+        payload_a1 = json.loads(cat[0][2])
+        payload_a3 = json.loads(cat[2][2])
+        self.assertEqual(payload_a1["variantes"], payload_a3["variantes"])
+
+        payload_b = json.loads(cat[1][2])
+        self.assertNotEqual(
+            payload_a1["variantes"],
+            payload_b["variantes"],
+            "el evento del medio debe ser B (catálogo cambiado)",
+        )
+
     def test_estado(self):
         e = SY.estado(self.con); self.assertEqual((e["pendientes"] > 0, e["enviados"], e["ultimo_envio"]), (True, 0, None))
         SY.sincronizar(self.con, Nube(), T0)

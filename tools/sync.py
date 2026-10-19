@@ -15,7 +15,26 @@ class SyncError(Exception):
 
 
 def encolar_catalogo(con) -> bool:
-    """Foto del catálogo (nombres, precios, costos). El uuid depende del contenido: si nada cambió, no se vuelve a enviar."""
+    """Encola una foto completa del catálogo (nombres, precios, costos).
+
+    Idempotencia:
+      - La huella SHA-256 del JSON canónico del catálogo evita reenvíos cuando
+        el catálogo no cambió. Si coincide con la última foto, no se encola nada
+        y la función devuelve False.
+      - Si el catálogo cambió, se encola un evento con UUID único generado con
+        uuid4. El UUID no deriva de la huella: esto conserva correctamente el
+        escenario A → B → A, en el que deben existir tres eventos con tres UUIDs
+        distintos y el catálogo A más reciente debe prevalecer en la nube según
+        creado_local descendente.
+
+    Nota de diseño:
+      Cada cambio de catálogo inserta una fila nueva en `public.eventos` de la
+      nube. Con aproximadamente 100 cambios mensuales son unas 1200 filas al
+      año por cliente, lo cual es aceptable. Si en el futuro la tabla crece
+      demasiado, se puede migrar a un UPSERT en `sync_push` con UUID basado en
+      la huella y timestamp, actualizando `creado_local` en el conflicto.
+      Ese cambio requeriría modificar el SQL de la nube y validarlo manualmente.
+    """
     filas = con.execute("SELECT v.sku,m.nombre,p.modelo,c.nombre,p.genero,v.talla,v.color,v.costo_usd_cents,v.precio_usd_cents,v.stock_minimo,v.activo "
                         "FROM variantes v JOIN productos p ON p.id=v.producto_id JOIN marcas m ON m.id=p.marca_id JOIN categorias c ON c.id=p.categoria_id "
                         "ORDER BY v.sku").fetchall()
