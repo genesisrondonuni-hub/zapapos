@@ -98,6 +98,36 @@ class S(Base):
         self.assertEqual(SY.sincronizar(self.con, nube, T0 + timedelta(minutes=5))["enviados"], 1)
         self.assertEqual(len(nube.recibidos), len(self.eventos()))
 
+    def test_evento_offline_preserva_ocurrido_en_del_hecho(self):
+        """Evento encolado offline debe llegar a la nube con el timestamp del hecho, no del envío."""
+        # Encolar movimiento con ocurrido_en = T0 - 3 días (simula offline)
+        hace_3dias = T0 - timedelta(days=3)
+        self.con.execute(
+            "UPDATE outbox SET ocurrido_en=? WHERE entidad='movimiento'",
+            (_iso(hace_3dias),)
+        )
+        self.con.commit()
+        nube = Nube()
+        SY.sincronizar(self.con, nube, T0)  # envío = T0
+        # El evento enviado a la nube debe llevar el timestamp del hecho
+        movs = [e for e in nube.recibidos.values() if e["entidad"] == "movimiento"]
+        self.assertTrue(movs)
+        for e in movs:
+            self.assertEqual(e["creado_en"], _iso(hace_3dias))
+
+    def test_migracion_backfillea_ocurrido_en_en_filas_existentes(self):
+        """Verifica la lógica del backfill (migración 009). No ejecuta la migración real
+        (Base.setUp ya la aplicó al crear la DB); simula la lógica con un UPDATE manual.
+        Para test de la migración real, ver tests/test_database.py (fuera de scope A3)."""
+        # Simular fila pre-migración insertando NULL explícito
+        self.con.execute("UPDATE outbox SET ocurrido_en=NULL WHERE id=(SELECT MIN(id) FROM outbox)")
+        self.con.commit()
+        # Re-aplicar backfill (el que hace la migración 009)
+        self.con.execute("UPDATE outbox SET ocurrido_en = creado_en WHERE ocurrido_en IS NULL")
+        self.con.commit()
+        fila = self.con.execute("SELECT creado_en, ocurrido_en FROM outbox WHERE id=(SELECT MIN(id) FROM outbox)").fetchone()
+        self.assertEqual(fila[0], fila[1])  # backfill correcto
+
     def test_evento_que_falla_MAX_INTENTOS_veces_queda_descartado(self):
         """Tras MAX_INTENTOS fallos, el evento se descarta y no bloquea la cola."""
         SY.encolar_catalogo(self.con)

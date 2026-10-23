@@ -9,6 +9,11 @@ from core.auth import auditar, require_rol
 TASA_VIEJA_HORAS = 24
 
 
+def _iso(dt):
+    dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
 class PosError(Exception):
     pass
 
@@ -199,7 +204,8 @@ def cerrar_venta(con, venta_id, usuario_id=None) -> dict:
                                    "WHERE venta_id=? AND anulado=0 ORDER BY id", (venta_id,)))
         vueltos = _filas(con.execute("SELECT metodo, moneda, monto_cents, equiv_usd_cents, referencia FROM vueltos "
                                      "WHERE venta_id=? AND anulado=0 ORDER BY id", (venta_id,)))
-        con.execute("UPDATE ventas SET estado='cerrada', cerrada_en=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", (venta_id,))
+        ahora = _iso(datetime.now(timezone.utc))
+        con.execute("UPDATE ventas SET estado='cerrada', cerrada_en=? WHERE id=?", (ahora, venta_id))
         for it in items:
             inventario.registrar_movimiento(con, v["sucursal_id"], it["variante_id"], "venta", it["cantidad"],
                                             f"venta {v['uuid'][:8]}", usuario_id, f"venta #{venta_id}",
@@ -211,8 +217,8 @@ def cerrar_venta(con, venta_id, usuario_id=None) -> dict:
         payload = json.dumps({"venta": {k: v[k] for k in ("uuid", "sucursal_id", "tasa_micro", "iva_modo", "iva_bp",
                               "subtotal_usd_cents", "iva_usd_cents", "total_usd_cents", "total_bs_centimos")},
                               "items": items_nube, "pagos": pagos, "vueltos": vueltos}, ensure_ascii=False)
-        con.execute("INSERT INTO outbox(uuid,entidad,operacion,payload) VALUES(?,?,?,?)",
-                    (f"venta:{v['uuid']}:cierre", "venta", "insert", payload))
+        con.execute("INSERT INTO outbox(uuid,entidad,operacion,payload,ocurrido_en) VALUES(?,?,?,?,?)",
+                    (f"venta:{v['uuid']}:cierre", "venta", "insert", payload, ahora))
         from core import fiscal                       # la factura queda en cola en la misma transacción; emitirla no frena la venta
         fiscal.encolar_factura(con, venta_id)
         auditar(con, usuario_id, "venta_cerrada", str(venta_id))
@@ -259,10 +265,11 @@ def devolver(con, actor, venta_id, items, motivo) -> dict:
             t = {"subtotal_usd_cents": v["subtotal_usd_cents"] - prev[0], "iva_usd_cents": v["iva_usd_cents"] - prev[1],
                  "total_usd_cents": v["total_usd_cents"] - prev[2], "total_bs_centimos": v["total_bs_centimos"] - prev[3]}
         du = str(_uuid.uuid4())
-        did = con.execute("INSERT INTO devoluciones(uuid,venta_id,usuario_id,motivo,subtotal_usd_cents,iva_usd_cents,total_usd_cents,total_bs_centimos,tasa_micro) "
-                          "VALUES(?,?,?,?,?,?,?,?,?)",
+        ahora = _iso(datetime.now(timezone.utc))
+        did = con.execute("INSERT INTO devoluciones(uuid,venta_id,usuario_id,motivo,subtotal_usd_cents,iva_usd_cents,total_usd_cents,total_bs_centimos,tasa_micro,creado_en) "
+                          "VALUES(?,?,?,?,?,?,?,?,?,?)",
                           (du, venta_id, actor["id"], motivo.strip(), t["subtotal_usd_cents"], t["iva_usd_cents"],
-                           t["total_usd_cents"], t["total_bs_centimos"], v["tasa_micro"])).lastrowid
+                           t["total_usd_cents"], t["total_bs_centimos"], v["tasa_micro"], ahora)).lastrowid
         for vid, n in pedido.items():
             con.execute("INSERT INTO devolucion_items(devolucion_id,variante_id,cantidad,precio_unit_usd_cents) VALUES(?,?,?,?)",
                         (did, vid, n, vendidas[vid][1]))
@@ -270,8 +277,9 @@ def devolver(con, actor, venta_id, items, motivo) -> dict:
                                             actor["id"], f"devolucion #{did}", uuid_=f"{du}:{vid}")
         from core import fiscal
         fiscal.encolar_nota_credito(con, did)
-        con.execute("INSERT INTO outbox(uuid,entidad,operacion,payload) VALUES(?,?,?,?)",
+        con.execute("INSERT INTO outbox(uuid,entidad,operacion,payload,ocurrido_en) VALUES(?,?,?,?,?)",
                     (f"devolucion:{du}", "devolucion", "insert",
-                     json.dumps({"venta_uuid": v["uuid"], "items": pedido, "motivo": motivo.strip(), **t}, ensure_ascii=False)))
+                     json.dumps({"venta_uuid": v["uuid"], "items": pedido, "motivo": motivo.strip(), **t}, ensure_ascii=False),
+                     ahora))
         auditar(con, actor["id"], "devolucion", f"venta {venta_id}: {did}")
     return {"devolucion_id": did, "completa": completa, **t}

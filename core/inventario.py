@@ -21,8 +21,8 @@ def _evento(con, mov_id):
     """Cada movimiento viaja a la nube como evento (idempotente por su uuid): la nube calcula el stock sumándolos."""
     r = con.execute("SELECT m.uuid,m.sucursal_id,v.sku,m.tipo,m.cantidad,m.motivo,m.referencia,m.creado_en FROM inventario_movimientos m "
                     "JOIN variantes v ON v.id=m.variante_id WHERE m.id=?", (mov_id,)).fetchone()
-    con.execute("INSERT OR IGNORE INTO outbox(uuid,entidad,operacion,payload) VALUES(?,?,?,?)",
-                (f"mov:{r[0]}", "movimiento", "insert", json.dumps(dict(zip(("uuid", "sucursal_id", "sku", "tipo", "cantidad", "motivo", "referencia", "creado_en"), r)), ensure_ascii=False)))
+    con.execute("INSERT OR IGNORE INTO outbox(uuid,entidad,operacion,payload,ocurrido_en) VALUES(?,?,?,?,?)",
+                (f"mov:{r[0]}", "movimiento", "insert", json.dumps(dict(zip(("uuid", "sucursal_id", "sku", "tipo", "cantidad", "motivo", "referencia", "creado_en"), r)), ensure_ascii=False), r[7]))
 
 
 def registrar_movimiento(con, sucursal_id, variante_id, tipo, cantidad, motivo,

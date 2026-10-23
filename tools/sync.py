@@ -73,11 +73,11 @@ def estado(con) -> dict:
 
 def enviar_lote(con, transporte, ahora=None, lote=100) -> dict:
     ahora = ahora or datetime.now(timezone.utc)
-    filas = con.execute("SELECT id,uuid,entidad,operacion,payload,creado_en,intentos FROM outbox WHERE enviado_en IS NULL AND descartado_en IS NULL AND "
+    filas = con.execute("SELECT id,uuid,entidad,operacion,payload,creado_en,intentos,ocurrido_en FROM outbox WHERE enviado_en IS NULL AND descartado_en IS NULL AND "
                         "(proximo_intento IS NULL OR proximo_intento<=?) ORDER BY id LIMIT ?", (_iso(ahora), lote)).fetchall()
     if not filas:
         return {"enviados": 0, "fallidos": 0, "error": None}
-    eventos = [{"uuid": u, "entidad": e, "operacion": o, "payload": json.loads(p), "creado_en": c} for _, u, e, o, p, c, _ in filas]
+    eventos = [{"uuid": u, "entidad": e, "operacion": o, "payload": json.loads(p), "creado_en": ocurrido or c} for _, u, e, o, p, c, _, ocurrido in filas]
     try:
         acks = set(transporte.push(eventos))
         error = None
